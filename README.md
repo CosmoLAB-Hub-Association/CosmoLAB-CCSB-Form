@@ -72,7 +72,7 @@ Configuration recommandée sur Vercel :
 
 - Build command : `npm run build`
 - Output directory : `dist`
-- Environment Variables : copie les variables `VITE_FIREBASE_*` (et autres) depuis ton `.env` dans l’UI Vercel.
+- Environment Variables : copie les variables `VITE_FIREBASE_*` (et autres) depuis ton `.env` dans l’UI Vercel (sans guillemets), puis **redeploy**.
 
 ## Notes
 
