@@ -1,0 +1,46 @@
+{
+  "entities": {
+    "Application": {
+      "title": "Application",
+      "description": "A candidate's application for the CCSB program.",
+      "type": "object",
+      "properties": {
+        "fullName": { "type": "string", "description": "Nom et prénom" },
+        "gender": { "type": "string", "enum": ["Homme", "Femme", "Préfère ne pas préciser"] },
+        "country": { "type": "string" },
+        "city": { "type": "string" },
+        "nationality": { "type": "string" },
+        "email": { "type": "string", "format": "email" },
+        "phone": { "type": "string" },
+        "linkedin": { "type": "string" },
+        "website": { "type": "string" },
+        "educationLevel": { "type": "string", "enum": ["Licence", "Master", "Doctorat (PhD)", "Post-doctorat", "Autre"] },
+        "fieldOfStudy": { "type": "string" },
+        "currentOrganization": { "type": "string" },
+        "currentRole": { "type": "string" },
+        "yearsExperience": { "type": "string", "enum": ["0 – 2 ans", "3 – 5 ans", "6 – 10 ans", "10 – 15 ans", "15 ans et plus"] },
+        "expertiseDomains": { "type": "array", "items": { "type": "string" } },
+        "technicalSkills": { "type": "string" },
+        "previousProjectTypes": { "type": "array", "items": { "type": "string" } },
+        "relevantExperience": { "type": "string" },
+        "contributionTypes": { "type": "array", "items": { "type": "string" } },
+        "availability": { "type": "string", "enum": ["Contribution ponctuelle", "2 à 4 heures par mois", "5 à 10 heures par mois", "Participation à des projets spécifiques"] },
+        "motivation": { "type": "string" },
+        "values": { "type": "string" },
+        "interests": { "type": "array", "items": { "type": "string" } },
+        "cvLink": { "type": "string" },
+        "publicationsLinks": { "type": "string" },
+        "consent": { "type": "boolean" },
+        "submittedAt": { "type": "string", "format": "date-time" },
+        "status": { "type": "string", "enum": ["pending", "reviewed", "accepted", "rejected"] }
+      },
+      "required": ["fullName", "email", "consent"]
+    }
+  },
+  "firestore": {
+    "applications": {
+      "schema": "Application",
+      "description": "Collection of CCSB applications."
+    }
+  }
+}

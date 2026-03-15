@@ -1,0 +1,55 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // ===============================================================
+    // Assumed Data Model
+    // ===============================================================
+    // Collection: applications
+    // Fields:
+    //   - fullName: string (required)
+    //   - email: string (required, email format)
+    //   - consent: bool (required, must be true)
+    //   - status: string (default: 'pending')
+    //   - submittedAt: timestamp
+    //   ... other fields from the form
+    // ===============================================================
+
+    // Helper Functions
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isAdmin() {
+      return isAuthenticated() && 
+        (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' ||
+         (request.auth.token.email == "comolabmagazine@gmail.com" && request.auth.token.email_verified == true));
+    }
+
+    function isValidApplication(data) {
+      return data.keys().hasAll(['fullName', 'email', 'status', 'submittedAt']) &&
+             data.fullName is string && data.fullName.size() > 0 && data.fullName.size() < 100 &&
+             data.email is string && data.email.matches("^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$") &&
+             data.status == 'pending' &&
+             data.submittedAt is timestamp &&
+             // Ensure other optional fields have size limits if present
+             (!('motivation' in data) || (data.motivation is string && data.motivation.size() < 2000)) &&
+             (!('technicalSkills' in data) || (data.technicalSkills is string && data.technicalSkills.size() < 2000)) &&
+             (!('cvLink' in data) || (data.cvLink is string && data.cvLink.size() < 500));
+    }
+
+    match /applications/{appId} {
+      // Anyone can submit an application (create)
+      // We don't require auth for submission to lower barrier, but we validate data
+      allow create: if isValidApplication(request.resource.data) && 
+                      request.resource.data.status == 'pending';
+      
+      // Only admins can read or update applications
+      allow read, update, delete: if isAdmin();
+    }
+
+    match /users/{userId} {
+      allow read: if isAuthenticated() && request.auth.uid == userId;
+      allow write: if isAdmin();
+    }
+  }
+}
