@@ -31,14 +31,22 @@ L’application démarre sur `http://localhost:3000`.
 
 ## Configuration Firebase
 
-Le projet lit sa configuration Firebase depuis `firebase-applet-config.json` (utilisé par `src/firebase.ts`).
+Le projet lit sa configuration Firebase via des variables d’environnement Vite (utilisées par `src/firebase.ts`).
 
 1. Crée un projet Firebase
 2. Active :
    - Authentication → provider **Google**
    - Firestore Database
    - Storage (si tu utilises l’upload)
-3. Mets à jour `firebase-applet-config.json` avec les valeurs de ton projet (config Web Firebase + `firestoreDatabaseId`).
+3. Crée un fichier `.env` (non commité) à partir de `.env.example` et renseigne :
+   - `VITE_FIREBASE_API_KEY`
+   - `VITE_FIREBASE_AUTH_DOMAIN`
+   - `VITE_FIREBASE_PROJECT_ID`
+   - `VITE_FIREBASE_APP_ID`
+   - `VITE_FIREBASE_STORAGE_BUCKET`
+   - `VITE_FIREBASE_MESSAGING_SENDER_ID`
+   - (optionnel) `VITE_FIREBASE_MEASUREMENT_ID`
+   - (optionnel) `VITE_FIREBASE_FIRESTORE_DATABASE_ID`
 
 Règles Firestore : `firestore.rules`.
 
@@ -64,6 +72,7 @@ Configuration recommandée sur Vercel :
 
 - Build command : `npm run build`
 - Output directory : `dist`
+- Environment Variables : copie les variables `VITE_FIREBASE_*` (et autres) depuis ton `.env` dans l’UI Vercel.
 
 ## Notes
 
