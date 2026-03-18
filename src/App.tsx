@@ -30,16 +30,8 @@ import {
   Palette,
   Send
 } from 'lucide-react';
-import { db, storage, auth } from './firebase';
-import { collection, addDoc, serverTimestamp, query, orderBy, onSnapshot } from 'firebase/firestore';
-import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
-import { 
-  signInWithPopup, 
-  GoogleAuthProvider, 
-  onAuthStateChanged, 
-  signOut,
-  User as FirebaseUser 
-} from 'firebase/auth';
+import { supabase } from './supabase';
+import type { User as SupabaseUser } from '@supabase/supabase-js';
 import CosmoLABHubLogo from './assets/CosmoLABHubLogo.png';
 
 // --- Types ---
@@ -192,7 +184,7 @@ export default function App() {
   const [error, setError] = useState<string | null>(null);
   const [uploadProgress, setUploadProgress] = useState<number | null>(null);
   const [cvFileName, setCvFileName] = useState<string | null>(null);
-  const [user, setUser] = useState<FirebaseUser | null>(null);
+  const [user, setUser] = useState<SupabaseUser | null>(null);
   const [isAdmin, setIsAdmin] = useState(false);
   const [applications, setApplications] = useState<any[]>([]);
   const [showAdminPanel, setShowAdminPanel] = useState(false);
@@ -207,30 +199,114 @@ export default function App() {
       setIsAdminMode(true);
     }
 
-    const unsubscribe = onAuthStateChanged(auth, (user) => {
-      setUser(user);
-      setIsAdmin(user?.email === ADMIN_EMAIL);
+    let cancelled = false;
+
+    supabase.auth
+      .getSession()
+      .then(({ data, error }) => {
+        if (cancelled) return;
+        if (error) {
+          console.error('Supabase getSession error:', error);
+          return;
+        }
+        const currentUser = data.session?.user ?? null;
+        setUser(currentUser);
+        setIsAdmin(currentUser?.email === ADMIN_EMAIL);
+      })
+      .catch((err) => {
+        if (!cancelled) console.error('Supabase getSession failed:', err);
+      });
+
+    const { data } = supabase.auth.onAuthStateChange((_event, session) => {
+      const currentUser = session?.user ?? null;
+      setUser(currentUser);
+      setIsAdmin(currentUser?.email === ADMIN_EMAIL);
     });
-    return () => unsubscribe();
+
+    return () => {
+      cancelled = true;
+      data.subscription.unsubscribe();
+    };
   }, []);
 
   useEffect(() => {
     if (isAdmin && showAdminPanel) {
-      const q = query(collection(db, 'applications'), orderBy('submittedAt', 'desc'));
-      const unsubscribe = onSnapshot(q, (snapshot) => {
-        const apps = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-        setApplications(apps);
-      }, (err) => {
-        console.error("Erreur Firestore:", err);
+      let active = true;
+
+      const mapRowToView = (row: any) => ({
+        id: row.id,
+        status: row.status ?? 'pending',
+        submittedAt: row.submitted_at ? new Date(row.submitted_at) : null,
+        fullName: row.full_name ?? '',
+        gender: row.gender ?? '',
+        country: row.country ?? '',
+        city: row.city ?? '',
+        nationality: row.nationality ?? '',
+        email: row.email ?? '',
+        phone: row.phone ?? '',
+        linkedin: row.linkedin ?? '',
+        website: row.website ?? '',
+        educationLevel: row.education_level ?? '',
+        fieldOfStudy: row.field_of_study ?? '',
+        currentOrganization: row.current_organization ?? '',
+        currentRole: row.current_role ?? '',
+        yearsExperience: row.years_experience ?? '',
+        expertiseDomains: row.expertise_domains ?? [],
+        technicalSkills: row.technical_skills ?? '',
+        previousProjectTypes: row.previous_project_types ?? [],
+        relevantExperience: row.relevant_experience ?? '',
+        contributionTypes: row.contribution_types ?? [],
+        availability: row.availability ?? '',
+        motivation: row.motivation ?? '',
+        values: row.values ?? '',
+        interests: row.interests ?? [],
+        cvLink: row.cv_link ?? '',
+        publicationsLinks: row.publications_links ?? '',
+        consent: row.consent ?? [],
       });
-      return () => unsubscribe();
+
+      const loadApplications = async () => {
+        const { data, error } = await supabase
+          .from('applications')
+          .select('*')
+          .order('submitted_at', { ascending: false });
+
+        if (!active) return;
+
+        if (error) {
+          console.error('Erreur Supabase (applications):', error);
+          return;
+        }
+
+        setApplications((data ?? []).map(mapRowToView));
+      };
+
+      void loadApplications();
+
+      const channel = supabase
+        .channel('applications-admin')
+        .on(
+          'postgres_changes',
+          { event: '*', schema: 'public', table: 'applications' },
+          () => void loadApplications(),
+        )
+        .subscribe();
+
+      return () => {
+        active = false;
+        supabase.removeChannel(channel);
+      };
     }
   }, [isAdmin, showAdminPanel]);
 
   const handleLogin = async () => {
     try {
-      const provider = new GoogleAuthProvider();
-      await signInWithPopup(auth, provider);
+      await supabase.auth.signInWithOAuth({
+        provider: 'google',
+        options: {
+          redirectTo: `${window.location.origin}${window.location.pathname}${window.location.search}`,
+        },
+      });
     } catch (err) {
       console.error("Erreur de connexion:", err);
     }
@@ -238,7 +314,7 @@ export default function App() {
 
   const handleLogout = async () => {
     try {
-      await signOut(auth);
+      await supabase.auth.signOut();
       setShowAdminPanel(false);
     } catch (err) {
       console.error("Erreur de déconnexion:", err);
@@ -256,26 +332,33 @@ export default function App() {
     }
 
     setCvFileName(file.name);
-    const storageRef = ref(storage, `cvs/${Date.now()}_${file.name}`);
-    const uploadTask = uploadBytesResumable(storageRef, file);
+    setUploadProgress(1);
 
-    uploadTask.on(
-      'state_changed',
-      (snapshot) => {
-        const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
-        setUploadProgress(progress);
-      },
-      (error) => {
-        console.error("Upload error:", error);
+    const safeName = file.name.replace(/[^\w.\-]+/g, '_');
+    const filePath = `cv/${Date.now()}_${crypto.randomUUID()}_${safeName}`;
+
+    void (async () => {
+      const { error } = await supabase.storage.from('cvs').upload(filePath, file, {
+        upsert: false,
+        contentType: file.type || undefined,
+      });
+
+      if (error) {
+        console.error('Upload error:', error);
         setError("Erreur lors de l'upload du fichier.");
         setUploadProgress(null);
-      },
-      async () => {
-        const downloadURL = await getDownloadURL(uploadTask.snapshot.ref);
-        updateField('cvLink', downloadURL);
-        setUploadProgress(null);
+        return;
       }
-    );
+
+      const { data } = supabase.storage.from('cvs').getPublicUrl(filePath);
+      updateField('cvLink', data.publicUrl);
+      setUploadProgress(100);
+      window.setTimeout(() => setUploadProgress(null), 300);
+    })().catch((err) => {
+      console.error('Upload failed:', err);
+      setError("Erreur lors de l'upload du fichier.");
+      setUploadProgress(null);
+    });
   };
 
   const handleNext = () => {
@@ -304,11 +387,37 @@ export default function App() {
     setError(null);
 
     try {
-      await addDoc(collection(db, 'applications'), {
-        ...formData,
+      const { error } = await supabase.from('applications').insert({
         status: 'pending',
-        submittedAt: serverTimestamp(),
+        full_name: formData.fullName,
+        gender: formData.gender,
+        country: formData.country,
+        city: formData.city,
+        nationality: formData.nationality,
+        email: formData.email,
+        phone: formData.phone,
+        linkedin: formData.linkedin,
+        website: formData.website,
+        education_level: formData.educationLevel,
+        field_of_study: formData.fieldOfStudy,
+        current_organization: formData.currentOrganization,
+        current_role: formData.currentRole,
+        years_experience: formData.yearsExperience,
+        expertise_domains: formData.expertiseDomains,
+        technical_skills: formData.technicalSkills,
+        previous_project_types: formData.previousProjectTypes,
+        relevant_experience: formData.relevantExperience,
+        contribution_types: formData.contributionTypes,
+        availability: formData.availability,
+        motivation: formData.motivation,
+        values: formData.values,
+        interests: formData.interests,
+        cv_link: formData.cvLink,
+        publications_links: formData.publicationsLinks,
+        consent: formData.consent,
       });
+
+      if (error) throw error;
       setIsSubmitted(true);
     } catch (err: any) {
       console.error("Error submitting application:", err);
@@ -451,7 +560,9 @@ export default function App() {
                       </div>
                       
                       <div className="mt-4 pt-4 border-t border-zinc-100 flex justify-between items-center">
-                        <p className="text-[10px] text-zinc-400">Soumis le {app.submittedAt?.toDate().toLocaleDateString()}</p>
+                        <p className="text-[10px] text-zinc-400">
+                          Soumis le {app.submittedAt ? app.submittedAt.toLocaleDateString() : ''}
+                        </p>
                         <div className="flex gap-2">
                           {app.cvLink && (
                             <a href={app.cvLink} target="_blank" rel="noreferrer" className="p-2 hover:bg-zinc-100 rounded-lg transition-colors">
@@ -824,7 +935,7 @@ export default function App() {
                                 </div>
                               )}
 
-                              {formData.cvLink && !uploadProgress && (
+                              {formData.cvLink && uploadProgress === null && (
                                 <div className="mt-4 flex items-center gap-2 text-red-500 text-xs font-bold uppercase tracking-widest">
                                   <CheckCircle className="w-4 h-4" />
                                   Fichier prêt

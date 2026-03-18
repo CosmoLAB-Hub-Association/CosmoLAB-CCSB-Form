@@ -5,15 +5,15 @@ Application web (SPA) pour collecter des candidatures/membres/consultants CCSB e
 ## Fonctionnalités
 
 - Formulaire multi‑étapes (React) avec progression.
-- Envoi des candidatures dans **Firestore**.
-- (Optionnel) stockage de documents via **Firebase Storage**.
-- Accès administrateur via **Google Auth** + panneau de gestion.
+- Envoi des candidatures dans **Supabase (Postgres)**.
+- (Optionnel) stockage de documents via **Supabase Storage**.
+- Accès administrateur via **Supabase Auth (Google)** + panneau de gestion.
 
 ## Stack
 
 - React + TypeScript + Vite
 - Tailwind CSS
-- Firebase (Auth, Firestore, Storage)
+- Supabase (Auth, Postgres, Storage)
 
 ## Prérequis
 
@@ -29,26 +29,22 @@ npm run dev
 
 L’application démarre sur `http://localhost:3000`.
 
-## Configuration Firebase
+## Configuration Supabase
 
-Le projet lit sa configuration Firebase via des variables d’environnement Vite (utilisées par `src/firebase.ts`).
+Le projet lit sa configuration Supabase via des variables d’environnement Vite (utilisées par `src/supabase.ts`).
 
-1. Crée un projet Firebase
-2. Active :
-   - Authentication → provider **Google**
-   - Firestore Database
-   - Storage (si tu utilises l’upload)
-3. Crée un fichier `.env` (non commité) à partir de `.env.example` et renseigne :
-   - `VITE_FIREBASE_API_KEY`
-   - `VITE_FIREBASE_AUTH_DOMAIN`
-   - `VITE_FIREBASE_PROJECT_ID`
-   - `VITE_FIREBASE_APP_ID`
-   - `VITE_FIREBASE_STORAGE_BUCKET`
-   - `VITE_FIREBASE_MESSAGING_SENDER_ID`
-   - (optionnel) `VITE_FIREBASE_MEASUREMENT_ID`
-   - (optionnel) `VITE_FIREBASE_FIRESTORE_DATABASE_ID`
+1. Crée un projet Supabase
+2. Initialise la DB + Storage en exécutant `supabase/schema.sql` dans Supabase Dashboard → SQL Editor.
+3. Auth (admin) :
+   - Authentication → Providers → active **Google**
+   - Authentication → URL Configuration → ajoute tes URLs de redirection (local + Vercel)
+4. Crée un fichier `.env` (non commité) à partir de `.env.example` et renseigne :
+   - `VITE_SUPABASE_URL`
+   - `VITE_SUPABASE_ANON_KEY`
 
-Règles Firestore : `firestore.rules`.
+Note sécurité:
+- Ne mets jamais le mot de passe DB / connection string dans le frontend.
+- `supabase/schema.sql` crée des policies permissives pour l’upload anonyme des CV (comme Firebase côté client). Pour durcir, limite l’upload aux utilisateurs authentifiés + signed URLs.
 
 ## Mode admin
 
@@ -72,7 +68,7 @@ Configuration recommandée sur Vercel :
 
 - Build command : `npm run build`
 - Output directory : `dist`
-- Environment Variables : copie les variables `VITE_FIREBASE_*` (et autres) depuis ton `.env` dans l’UI Vercel (sans guillemets), puis **redeploy**.
+- Environment Variables : copie `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY` (et autres) depuis ton `.env` dans l’UI Vercel (sans guillemets), puis **redeploy**.
 
 ## Notes
 
